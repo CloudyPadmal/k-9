@@ -42,7 +42,7 @@ import android.os.Process;
 import android.os.SystemClock;
 import android.support.annotation.NonNull;
 import android.support.annotation.VisibleForTesting;
-import android.util.Log;
+import timber.log.Timber;
 
 import com.fsck.k9.Account;
 import com.fsck.k9.Account.DeletePolicy;
@@ -105,6 +105,14 @@ import com.fsck.k9.search.LocalSearch;
 import com.fsck.k9.search.SearchAccount;
 import com.fsck.k9.search.SearchSpecification;
 import com.fsck.k9.search.SqlQueryBuilder;
+import timber.log.Timber;
+
+import static com.fsck.k9.K9.MAX_SEND_ATTEMPTS;
+import static com.fsck.k9.mail.Flag.X_REMOTE_COPY_STARTED;
+import static timber.log.Timber.e;
+import static timber.log.Timber.i;
+import static timber.log.Timber.v;
+import static timber.log.Timber.w;
 
 
 /**
@@ -197,7 +205,7 @@ public class MessagingController {
                     commandDescription = command.description;
 
                     if (K9.DEBUG) {
-                        Log.i(K9.LOG_TAG, "Running command '" + command.description + "', seq = " + command.sequence +
+                        i("Running command '" + command.description + "', seq = " + command.sequence +
                                 "(" + (command.isForegroundPriority ? "foreground" : "background") + "priority)");
                     }
 
@@ -212,7 +220,7 @@ public class MessagingController {
                                     sleep(30 * 1000);
                                     queuedCommands.put(command);
                                 } catch (InterruptedException e) {
-                                    Log.e(K9.LOG_TAG, "interrupted while putting a pending command for"
+                                    e("interrupted while putting a pending command for"
                                             + " an unavailable account back into the queue."
                                             + " THIS SHOULD NEVER HAPPEN.");
                                 }
@@ -221,7 +229,7 @@ public class MessagingController {
                     }
 
                     if (K9.DEBUG) {
-                        Log.i(K9.LOG_TAG, " Command '" + command.description + "' completed");
+                        i(" Command '" + command.description + "' completed");
                     }
 
                     for (MessagingListener l : getListeners(command.listener)) {
@@ -229,7 +237,7 @@ public class MessagingController {
                     }
                 }
             } catch (Exception e) {
-                Log.e(K9.LOG_TAG, "Error running command '" + commandDescription + "'", e);
+                Timber.e("Error running command '" + commandDescription + "'", e);
             }
         }
     }
@@ -380,7 +388,7 @@ public class MessagingController {
         }
         List<LocalFolder> localFolders = null;
         if (!account.isAvailable(context)) {
-            Log.i(K9.LOG_TAG, "not listing folders of unavailable account");
+            i("not listing folders of unavailable account");
         } else {
             try {
                 LocalStore localStore = account.getLocalStore();
@@ -579,7 +587,7 @@ public class MessagingController {
                     + ", folderName = " + folderName
                     + ", query = " + query
                     + ")";
-            Log.i(K9.LOG_TAG, msg);
+            i(msg);
         }
 
         return threadPool.submit(new Runnable() {
@@ -617,7 +625,7 @@ public class MessagingController {
             List<Message> messages = remoteFolder.search(query, requiredFlags, forbiddenFlags);
 
             if (K9.DEBUG) {
-                Log.i("Remote Search", "Remote search got " + messages.size() + " results");
+                i("Remote search got " + messages.size() + " results");
             }
 
             // There's no need to fetch messages already completely downloaded
@@ -642,9 +650,9 @@ public class MessagingController {
 
         } catch (Exception e) {
             if (Thread.currentThread().isInterrupted()) {
-                Log.i(K9.LOG_TAG, "Caught exception on aborted remote search; safe to ignore.", e);
+                Timber.i("Caught exception on aborted remote search; safe to ignore.", e);
             } else {
-                Log.e(K9.LOG_TAG, "Could not complete remote search", e);
+                Timber.e("Could not complete remote search", e);
                 if (listener != null) {
                     listener.remoteSearchFailed(null, e.getMessage());
                 }
@@ -682,7 +690,7 @@ public class MessagingController {
 
                     loadSearchResultsSynchronous(messages, localFolder, remoteFolder, listener);
                 } catch (MessagingException e) {
-                    Log.e(K9.LOG_TAG, "Exception in loadSearchResults: " + e);
+                    e("Exception in loadSearchResults: " + e);
                     addErrorMessage(account, null, e);
                 } finally {
                     if (listener != null) {
@@ -762,7 +770,7 @@ public class MessagingController {
         LocalFolder tLocalFolder = null;
 
         if (K9.DEBUG) {
-            Log.i(K9.LOG_TAG, "Synchronizing folder " + account.getDescription() + ":" + folder);
+            i("Synchronizing folder " + account.getDescription() + ":" + folder);
         }
 
         for (MessagingListener l : getListeners(listener)) {
@@ -782,7 +790,7 @@ public class MessagingController {
         Exception commandException = null;
         try {
             if (K9.DEBUG) {
-                Log.d(K9.LOG_TAG, "SYNC: About to process pending commands for account " + account.getDescription());
+                Timber.d("SYNC: About to process pending commands for account " + account.getDescription());
             }
 
             try {
@@ -790,7 +798,7 @@ public class MessagingController {
             } catch (Exception e) {
                 addErrorMessage(account, null, e);
 
-                Log.e(K9.LOG_TAG, "Failure processing command, but allow message sync attempt", e);
+                Timber.e("Failure processing command, but allow message sync attempt", e);
                 commandException = e;
             }
 
@@ -799,7 +807,7 @@ public class MessagingController {
              * the uids within the list.
              */
             if (K9.DEBUG) {
-                Log.v(K9.LOG_TAG, "SYNC: About to get local folder " + folder);
+                v("SYNC: About to get local folder " + folder);
             }
 
             final LocalStore localStore = account.getLocalStore();
@@ -811,14 +819,14 @@ public class MessagingController {
 
             if (providedRemoteFolder != null) {
                 if (K9.DEBUG) {
-                    Log.v(K9.LOG_TAG, "SYNC: using providedRemoteFolder " + folder);
+                    v("SYNC: using providedRemoteFolder " + folder);
                 }
                 remoteFolder = providedRemoteFolder;
             } else {
                 Store remoteStore = account.getRemoteStore();
 
                 if (K9.DEBUG) {
-                    Log.v(K9.LOG_TAG, "SYNC: About to get remote folder " + folder);
+                    v("SYNC: About to get remote folder " + folder);
                 }
                 remoteFolder = remoteStore.getFolder(folder);
 
@@ -849,13 +857,13 @@ public class MessagingController {
                  * Open the remote folder. This pre-loads certain metadata like message count.
                  */
                 if (K9.DEBUG) {
-                    Log.v(K9.LOG_TAG, "SYNC: About to open remote folder " + folder);
+                    v("SYNC: About to open remote folder " + folder);
                 }
 
                 remoteFolder.open(Folder.OPEN_MODE_RW);
                 if (Expunge.EXPUNGE_ON_POLL == account.getExpungePolicy()) {
                     if (K9.DEBUG) {
-                        Log.d(K9.LOG_TAG, "SYNC: Expunging folder " + account.getDescription() + ":" + folder);
+                        Timber.d("SYNC: Expunging folder " + account.getDescription() + ":" + folder);
                     }
                     remoteFolder.expunge();
                 }
@@ -879,7 +887,7 @@ public class MessagingController {
             Map<String, Message> remoteUidMap = new HashMap<>();
 
             if (K9.DEBUG) {
-                Log.v(K9.LOG_TAG, "SYNC: Remote message count for folder " + folder + " is " + remoteMessageCount);
+                v("SYNC: Remote message count for folder " + folder + " is " + remoteMessageCount);
             }
             final Date earliestDate = account.getEarliestPollDate();
             long earliestTimestamp = earliestDate != null ? earliestDate.getTime() : 0L;
@@ -895,7 +903,7 @@ public class MessagingController {
                 }
 
                 if (K9.DEBUG) {
-                    Log.v(K9.LOG_TAG, "SYNC: About to get messages " + remoteStart + " through " + remoteMessageCount +
+                    v("SYNC: About to get messages " + remoteStart + " through " + remoteMessageCount +
                             " for folder " + folder);
                 }
 
@@ -922,7 +930,7 @@ public class MessagingController {
                     }
                 }
                 if (K9.DEBUG) {
-                    Log.v(K9.LOG_TAG, "SYNC: Got " + remoteUidMap.size() + " messages for folder " + folder);
+                    v("SYNC: Got " + remoteUidMap.size() + " messages for folder " + folder);
                 }
 
                 for (MessagingListener l : getListeners(listener)) {
@@ -981,7 +989,7 @@ public class MessagingController {
             localFolder.setStatus(null);
 
             if (K9.DEBUG) {
-                Log.d(K9.LOG_TAG, "Done synchronizing folder " + account.getDescription() + ":" + folder +
+                Timber.d("Done synchronizing folder " + account.getDescription() + ":" + folder +
                         " @ " + new Date() + " with " + newMessages + " new messages");
             }
 
@@ -992,7 +1000,7 @@ public class MessagingController {
 
             if (commandException != null) {
                 String rootMessage = getRootCauseMessage(commandException);
-                Log.e(K9.LOG_TAG, "Root cause failure in " + account.getDescription() + ":" +
+                e("Root cause failure in " + account.getDescription() + ":" +
                         tLocalFolder.getName() + " was '" + rootMessage + "'");
                 localFolder.setStatus(rootMessage);
                 for (MessagingListener l : getListeners(listener)) {
@@ -1001,7 +1009,7 @@ public class MessagingController {
             }
 
             if (K9.DEBUG) {
-                Log.i(K9.LOG_TAG, "Done synchronizing folder " + account.getDescription() + ":" + folder);
+                i("Done synchronizing folder " + account.getDescription() + ":" + folder);
             }
 
         } catch (AuthenticationFailedException e) {
@@ -1011,7 +1019,7 @@ public class MessagingController {
                 l.synchronizeMailboxFailed(account, folder, "Authentication failure");
             }
         } catch (Exception e) {
-            Log.e(K9.LOG_TAG, "synchronizeMailbox", e);
+            Timber.e("synchronizeMailbox", e);
             // If we don't set the last checked, it can try too often during
             // failure conditions
             String rootMessage = getRootCauseMessage(e);
@@ -1020,7 +1028,7 @@ public class MessagingController {
                     tLocalFolder.setStatus(rootMessage);
                     tLocalFolder.setLastChecked(System.currentTimeMillis());
                 } catch (MessagingException me) {
-                    Log.e(K9.LOG_TAG, "Could not set last checked on folder " + account.getDescription() + ":" +
+                    Timber.e("Could not set last checked on folder " + account.getDescription() + ":" +
                             tLocalFolder.getName(), e);
                 }
             }
@@ -1030,8 +1038,7 @@ public class MessagingController {
             }
             notifyUserIfCertificateProblem(account, e, true);
             addErrorMessage(account, null, e);
-            Log.e(K9.LOG_TAG,
-                    "Failed synchronizing folder " + account.getDescription() + ":" + folder + " @ " + new Date());
+            e("Failed synchronizing folder " + account.getDescription() + ":" + folder + " @ " + new Date());
 
         } finally {
             if (providedRemoteFolder == null) {
@@ -1084,7 +1091,7 @@ public class MessagingController {
                         l.synchronizeMailboxFinished(account, folder, 0, 0);
                     }
                     if (K9.DEBUG) {
-                        Log.i(K9.LOG_TAG, "Done synchronizing folder " + folder);
+                        i("Done synchronizing folder " + folder);
                     }
 
                     return false;
@@ -1124,7 +1131,7 @@ public class MessagingController {
 
         if (earliestDate != null) {
             if (K9.DEBUG) {
-                Log.d(K9.LOG_TAG, "Only syncing messages after " + earliestDate);
+                Timber.d("Only syncing messages after " + earliestDate);
             }
         }
         final String folder = remoteFolder.getName();
@@ -1135,7 +1142,7 @@ public class MessagingController {
             unreadBeforeStart = stats.unreadMessageCount;
 
         } catch (MessagingException e) {
-            Log.e(K9.LOG_TAG, "Unable to getUnreadMessageCount for account: " + account, e);
+            Timber.e("Unable to getUnreadMessageCount for account: " + account, e);
         }
 
         List<Message> syncFlagMessages = new ArrayList<>();
@@ -1156,7 +1163,7 @@ public class MessagingController {
         }
 
         if (K9.DEBUG) {
-            Log.d(K9.LOG_TAG, "SYNC: Have " + unsyncedMessages.size() + " unsynced messages");
+            Timber.d("SYNC: Have " + unsyncedMessages.size() + " unsynced messages");
         }
 
         messages.clear();
@@ -1183,8 +1190,7 @@ public class MessagingController {
             fp.add(FetchProfile.Item.ENVELOPE);
 
             if (K9.DEBUG) {
-                Log.d(K9.LOG_TAG,
-                        "SYNC: About to fetch " + unsyncedMessages.size() + " unsynced messages for folder " + folder);
+                Timber.d("SYNC: About to fetch " + unsyncedMessages.size() + " unsynced messages for folder " + folder);
             }
 
             fetchUnsyncedMessages(account, remoteFolder, unsyncedMessages, smallMessages, largeMessages, progress, todo,
@@ -1200,11 +1206,11 @@ public class MessagingController {
             localFolder.setPushState(updatedPushState);
 
             if (K9.DEBUG) {
-                Log.d(K9.LOG_TAG, "SYNC: Synced unsynced messages for folder " + folder);
+                Timber.d("SYNC: Synced unsynced messages for folder " + folder);
             }
         }
         if (K9.DEBUG) {
-            Log.d(K9.LOG_TAG, "SYNC: Have "
+            Timber.d("SYNC: Have "
                     + largeMessages.size() + " large messages and "
                     + smallMessages.size() + " small messages out of "
                     + unsyncedMessages.size() + " unsynced messages");
@@ -1241,8 +1247,7 @@ public class MessagingController {
         refreshLocalMessageFlags(account, remoteFolder, localFolder, syncFlagMessages, progress, todo);
 
         if (K9.DEBUG) {
-            Log.d(K9.LOG_TAG,
-                    "SYNC: Synced remote messages for folder " + folder + ", " + newMessages.get() + " new messages");
+            Timber.d("SYNC: Synced remote messages for folder " + folder + ", " + newMessages.get() + " new messages");
         }
 
         if (purgeToVisibleLimit) {
@@ -1286,7 +1291,7 @@ public class MessagingController {
             boolean flagSyncOnly) throws MessagingException {
         if (message.isSet(Flag.DELETED)) {
             if (K9.DEBUG) {
-                Log.v(K9.LOG_TAG, "Message with uid " + message.getUid() + " is marked as deleted");
+                v("Message with uid " + message.getUid() + " is marked as deleted");
             }
             syncFlagMessages.add(message);
             return;
@@ -1298,13 +1303,13 @@ public class MessagingController {
             if (!flagSyncOnly) {
                 if (!message.isSet(Flag.X_DOWNLOADED_FULL) && !message.isSet(Flag.X_DOWNLOADED_PARTIAL)) {
                     if (K9.DEBUG) {
-                        Log.v(K9.LOG_TAG, "Message with uid " + message.getUid() + " has not yet been downloaded");
+                        v("Message with uid " + message.getUid() + " has not yet been downloaded");
                     }
 
                     unsyncedMessages.add(message);
                 } else {
                     if (K9.DEBUG) {
-                        Log.v(K9.LOG_TAG, "Message with uid " + message.getUid() + " is partially or fully downloaded");
+                        v("Message with uid " + message.getUid() + " is partially or fully downloaded");
                     }
 
                     // Store the updated message locally
@@ -1325,12 +1330,12 @@ public class MessagingController {
             }
         } else if (!localMessage.isSet(Flag.DELETED)) {
             if (K9.DEBUG) {
-                Log.v(K9.LOG_TAG, "Message with uid " + message.getUid() + " is present in the local store");
+                v("Message with uid " + message.getUid() + " is present in the local store");
             }
 
             if (!localMessage.isSet(Flag.X_DOWNLOADED_FULL) && !localMessage.isSet(Flag.X_DOWNLOADED_PARTIAL)) {
                 if (K9.DEBUG) {
-                    Log.v(K9.LOG_TAG, "Message with uid " + message.getUid()
+                    v("Message with uid " + message.getUid()
                             + " is not downloaded, even partially; trying again");
                 }
 
@@ -1344,7 +1349,7 @@ public class MessagingController {
             }
         } else {
             if (K9.DEBUG) {
-                Log.v(K9.LOG_TAG, "Local copy of message with uid " + message.getUid() + " is marked as deleted");
+                v("Local copy of message with uid " + message.getUid() + " is marked as deleted");
             }
         }
     }
@@ -1367,13 +1372,12 @@ public class MessagingController {
                             if (message.isSet(Flag.DELETED) || message.olderThan(earliestDate)) {
                                 if (K9.DEBUG) {
                                     if (message.isSet(Flag.DELETED)) {
-                                        Log.v(K9.LOG_TAG, "Newly downloaded message " + account + ":" + folder + ":" +
+                                        v("Newly downloaded message " + account + ":" + folder + ":" +
                                                 message.getUid()
                                                 + " was marked deleted on server, skipping");
                                     } else {
-                                        Log.d(K9.LOG_TAG,
-                                                "Newly downloaded message " + message.getUid() + " is older than "
-                                                        + earliestDate + ", skipping");
+                                        Timber.d("Newly downloaded message " + message.getUid() + " is older than "
+                                                + earliestDate + ", skipping");
                                     }
                                 }
                                 progress.incrementAndGet();
@@ -1391,7 +1395,7 @@ public class MessagingController {
                                 smallMessages.add(message);
                             }
                         } catch (Exception e) {
-                            Log.e(K9.LOG_TAG, "Error while storing downloaded message.", e);
+                            Timber.e("Error while storing downloaded message.", e);
                             addErrorMessage(account, null, e);
                         }
                     }
@@ -1413,7 +1417,7 @@ public class MessagingController {
 
         if (account.isSearchByDateCapable() && message.olderThan(earliestDate)) {
             if (K9.DEBUG) {
-                Log.d(K9.LOG_TAG, "Message " + message.getUid() + " is older than "
+                Timber.d("Message " + message.getUid() + " is older than "
                         + earliestDate + ", hence not saving");
             }
             return false;
@@ -1434,7 +1438,7 @@ public class MessagingController {
         final Date earliestDate = account.getEarliestPollDate();
 
         if (K9.DEBUG) {
-            Log.d(K9.LOG_TAG, "SYNC: Fetching " + smallMessages.size() + " small messages for folder " + folder);
+            Timber.d("SYNC: Fetching " + smallMessages.size() + " small messages for folder " + folder);
         }
 
         remoteFolder.fetch(smallMessages,
@@ -1464,7 +1468,7 @@ public class MessagingController {
                             }
 
                             if (K9.DEBUG) {
-                                Log.v(K9.LOG_TAG, "About to notify listeners that we got a new small message "
+                                v("About to notify listeners that we got a new small message "
                                         + account + ":" + folder + ":" + message.getUid());
                             }
 
@@ -1485,7 +1489,7 @@ public class MessagingController {
 
                         } catch (MessagingException me) {
                             addErrorMessage(account, null, me);
-                            Log.e(K9.LOG_TAG, "SYNC: fetch small messages", me);
+                            Timber.e("SYNC: fetch small messages", me);
                         }
                     }
 
@@ -1499,7 +1503,7 @@ public class MessagingController {
                 });
 
         if (K9.DEBUG) {
-            Log.d(K9.LOG_TAG, "SYNC: Done fetching small messages for folder " + folder);
+            Timber.d("SYNC: Done fetching small messages for folder " + folder);
         }
     }
 
@@ -1514,7 +1518,7 @@ public class MessagingController {
         final String folder = remoteFolder.getName();
         final Date earliestDate = account.getEarliestPollDate();
         if (K9.DEBUG) {
-            Log.d(K9.LOG_TAG, "SYNC: Fetching large messages for folder " + folder);
+            Timber.d("SYNC: Fetching large messages for folder " + folder);
         }
         remoteFolder.fetch(largeMessages, fp, null);
         for (T message : largeMessages) {
@@ -1530,7 +1534,7 @@ public class MessagingController {
                 downloadPartial(remoteFolder, localFolder, message);
             }
             if (K9.DEBUG) {
-                Log.v(K9.LOG_TAG, "About to notify listeners that we got a new large message "
+                v("About to notify listeners that we got a new large message "
                         + account + ":" + folder + ":" + message.getUid());
             }
             // Update the listener with what we've found
@@ -1556,7 +1560,7 @@ public class MessagingController {
             }
         }
         if (K9.DEBUG) {
-            Log.d(K9.LOG_TAG, "SYNC: Done fetching large messages for folder " + folder);
+            Timber.d("SYNC: Done fetching large messages for folder " + folder);
         }
 
     }
@@ -1645,7 +1649,7 @@ public class MessagingController {
         final String folder = remoteFolder.getName();
         if (remoteFolder.supportsFetchingFlags()) {
             if (K9.DEBUG) {
-                Log.d(K9.LOG_TAG, "SYNC: About to sync flags for "
+                Timber.d("SYNC: About to sync flags for "
                         + syncFlagMessages.size() + " remote messages for folder " + folder);
             }
 
@@ -1751,11 +1755,11 @@ public class MessagingController {
                 try {
                     processPendingCommandsSynchronous(account);
                 } catch (UnavailableStorageException e) {
-                    Log.i(K9.LOG_TAG,
+                    i(
                             "Failed to process pending command because storage is not available - trying again later.");
                     throw new UnavailableAccountException(e);
                 } catch (MessagingException me) {
-                    Log.e(K9.LOG_TAG, "processPendingCommands", me);
+                    Timber.e("processPendingCommands", me);
 
                     addErrorMessage(account, null, me);
 
@@ -1788,7 +1792,7 @@ public class MessagingController {
             for (PendingCommand command : commands) {
                 processingCommand = command;
                 if (K9.DEBUG) {
-                    Log.d(K9.LOG_TAG, "Processing pending command '" + command + "'");
+                    Timber.d("Processing pending command '" + command + "'");
                 }
                 for (MessagingListener l : getListeners()) {
                     l.pendingCommandStarted(account, command.getCommandName());
@@ -1803,13 +1807,12 @@ public class MessagingController {
 
                     localStore.removePendingCommand(command);
                     if (K9.DEBUG) {
-                        Log.d(K9.LOG_TAG, "Done processing pending command '" + command + "'");
+                        Timber.d("Done processing pending command '" + command + "'");
                     }
                 } catch (MessagingException me) {
                     if (me.isPermanentFailure()) {
                         addErrorMessage(account, null, me);
-                        Log.e(K9.LOG_TAG,
-                                "Failure of command '" + command + "' was permanent, removing command from queue");
+                        e("Failure of command '" + command + "' was permanent, removing command from queue");
                         localStore.removePendingCommand(processingCommand);
                     } else {
                         throw me;
@@ -1825,7 +1828,7 @@ public class MessagingController {
         } catch (MessagingException me) {
             notifyUserIfCertificateProblem(account, me, true);
             addErrorMessage(account, null, me);
-            Log.e(K9.LOG_TAG, "Could not process command '" + processingCommand + "'", me);
+            Timber.e("Could not process command '" + processingCommand + "'", me);
             throw me;
         } finally {
             for (MessagingListener l : getListeners()) {
@@ -1881,13 +1884,13 @@ public class MessagingController {
 
             if (remoteMessage == null) {
                 if (localMessage.isSet(Flag.X_REMOTE_COPY_STARTED)) {
-                    Log.w(K9.LOG_TAG, "Local message with uid " + localMessage.getUid() +
-                            " has flag " + Flag.X_REMOTE_COPY_STARTED +
+                    w("Local message with uid " + localMessage.getUid() +
+                            " has flag " + X_REMOTE_COPY_STARTED +
                             " already set, checking for remote message with " +
                             " same message id");
                     String rUid = remoteFolder.getUidFromMessageId(localMessage);
                     if (rUid != null) {
-                        Log.w(K9.LOG_TAG, "Local message has flag " + Flag.X_REMOTE_COPY_STARTED +
+                        w("Local message has flag " + X_REMOTE_COPY_STARTED +
                                 " already set, and there is a remote message with uid " +
                                 rUid + ", assuming message was already copied and aborting this copy");
 
@@ -1899,7 +1902,7 @@ public class MessagingController {
                         }
                         return;
                     } else {
-                        Log.w(K9.LOG_TAG, "No remote message with message-id found, proceeding with append");
+                        w("No remote message with message-id found, proceeding with append");
                     }
                 }
 
@@ -2026,7 +2029,7 @@ public class MessagingController {
             }
 
             if (K9.DEBUG) {
-                Log.d(K9.LOG_TAG, "processingPendingMoveOrCopy: source folder = " + srcFolder
+                Timber.d("processingPendingMoveOrCopy: source folder = " + srcFolder
                         + ", " + messages.size() + " messages, destination folder = " + destFolder + ", isCopy = " +
                         isCopy);
             }
@@ -2035,7 +2038,7 @@ public class MessagingController {
 
             if (!isCopy && destFolder.equals(account.getTrashFolderName())) {
                 if (K9.DEBUG) {
-                    Log.d(K9.LOG_TAG, "processingPendingMoveOrCopy doing special case for deleting message");
+                    Timber.d("processingPendingMoveOrCopy doing special case for deleting message");
                 }
 
                 String destFolderName = destFolder;
@@ -2054,7 +2057,7 @@ public class MessagingController {
             }
             if (!isCopy && Expunge.EXPUNGE_IMMEDIATELY == account.getExpungePolicy()) {
                 if (K9.DEBUG) {
-                    Log.i(K9.LOG_TAG, "processingPendingMoveOrCopy expunging folder " + account.getDescription() + ":" +
+                    i("processingPendingMoveOrCopy expunging folder " + account.getDescription() + ":" +
                             srcFolder);
                 }
 
@@ -2160,7 +2163,7 @@ public class MessagingController {
             return;
         }
         if (K9.DEBUG) {
-            Log.d(K9.LOG_TAG, "processPendingExpunge: folder = " + folder);
+            Timber.d("processPendingExpunge: folder = " + folder);
         }
 
         Store remoteStore = account.getRemoteStore();
@@ -2175,7 +2178,7 @@ public class MessagingController {
             }
             remoteFolder.expunge();
             if (K9.DEBUG) {
-                Log.d(K9.LOG_TAG, "processPendingExpunge: complete for folder = " + folder);
+                Timber.d("processPendingExpunge: complete for folder = " + folder);
             }
         } finally {
             closeFolder(remoteFolder);
@@ -2223,7 +2226,7 @@ public class MessagingController {
             remoteFolder.setFlags(Collections.singleton(Flag.SEEN), true);
             remoteFolder.close();
         } catch (UnsupportedOperationException uoe) {
-            Log.w(K9.LOG_TAG, "Could not mark all server-side as read because store doesn't support operation", uoe);
+            Timber.w("Could not mark all server-side as read because store doesn't support operation", uoe);
         } finally {
             closeFolder(localFolder);
             closeFolder(remoteFolder);
@@ -2257,7 +2260,7 @@ public class MessagingController {
 
             addErrorMessage(account, subject, baos.toString());
         } catch (Throwable it) {
-            Log.e(K9.LOG_TAG, "Could not save error message to " + account.getErrorFolderName(), it);
+            Timber.e("Could not save error message to " + account.getErrorFolderName(), it);
         }
     }
 
@@ -2294,7 +2297,7 @@ public class MessagingController {
             localFolder.clearMessagesOlderThan(nowTime - (15 * 60 * 1000));
 
         } catch (Throwable it) {
-            Log.e(K9.LOG_TAG, "Could not save error message to " + account.getErrorFolderName(), it);
+            Timber.e("Could not save error message to " + account.getErrorFolderName(), it);
         } finally {
             loopCatch.set(false);
         }
@@ -2304,7 +2307,7 @@ public class MessagingController {
     public void markAllMessagesRead(final Account account, final String folder) {
 
         if (K9.DEBUG) {
-            Log.i(K9.LOG_TAG, "Marking all messages in " + account.getDescription() + ":" + folder + " as read");
+            i("Marking all messages in " + account.getDescription() + ":" + folder + " as read");
         }
         PendingCommand command = PendingMarkAllAsRead.create(folder);
         queuePendingCommand(account, command);
@@ -2344,7 +2347,7 @@ public class MessagingController {
         try {
             localStore = account.getLocalStore();
         } catch (MessagingException e) {
-            Log.e(K9.LOG_TAG, "Couldn't get LocalStore instance", e);
+            Timber.e("Couldn't get LocalStore instance", e);
             return;
         }
 
@@ -2359,7 +2362,7 @@ public class MessagingController {
                 removeFlagFromCache(account, ids, flag);
             }
         } catch (MessagingException e) {
-            Log.e(K9.LOG_TAG, "Couldn't set flags in local database", e);
+            Timber.e("Couldn't set flags in local database", e);
         }
 
         // Read folder name and UID of messages from the database
@@ -2367,7 +2370,7 @@ public class MessagingController {
         try {
             folderMap = localStore.getFoldersAndUids(ids, threadedList);
         } catch (MessagingException e) {
-            Log.e(K9.LOG_TAG, "Couldn't get folder name and UID of messages", e);
+            Timber.e("Couldn't get folder name and UID of messages", e);
             return;
         }
 
@@ -2383,7 +2386,7 @@ public class MessagingController {
                     l.folderStatusChanged(account, folderName, unreadMessageCount);
                 }
             } catch (MessagingException e) {
-                Log.w(K9.LOG_TAG, "Couldn't get unread count for folder: " + folderName, e);
+                Timber.w("Couldn't get unread count for folder: " + folderName, e);
             }
 
             // The error folder is always a local folder
@@ -2503,11 +2506,11 @@ public class MessagingController {
 
     public void clearAllPending(final Account account) {
         try {
-            Log.w(K9.LOG_TAG, "Clearing pending commands!");
+            w("Clearing pending commands!");
             LocalStore localStore = account.getLocalStore();
             localStore.removePendingCommands();
         } catch (MessagingException me) {
-            Log.e(K9.LOG_TAG, "Unable to clear pending command", me);
+            Timber.e("Unable to clear pending command", me);
             addErrorMessage(account, null, me);
         }
     }
@@ -2545,7 +2548,7 @@ public class MessagingController {
             LocalMessage message = localFolder.getMessage(uid);
 
             if (uid.startsWith(K9.LOCAL_UID_PREFIX)) {
-                Log.w(K9.LOG_TAG, "Message has local UID so cannot download fully.");
+                w("Message has local UID so cannot download fully.");
                 // ASH move toast
                 android.widget.Toast.makeText(context,
                         "Message has local UID so cannot download fully",
@@ -2681,7 +2684,7 @@ public class MessagingController {
                     }
                 } catch (MessagingException me) {
                     if (K9.DEBUG) {
-                        Log.v(K9.LOG_TAG, "Exception loading attachment", me);
+                        Timber.v("Exception loading attachment", me);
                     }
 
                     for (MessagingListener l : getListeners(listener)) {
@@ -2787,7 +2790,7 @@ public class MessagingController {
                 return true;
             }
         } catch (Exception e) {
-            Log.e(K9.LOG_TAG, "Exception while checking for unsent messages", e);
+            Timber.e("Exception while checking for unsent messages", e);
         } finally {
             closeFolder(localFolder);
         }
@@ -2808,7 +2811,7 @@ public class MessagingController {
                     account.getOutboxFolderName());
             if (!localFolder.exists()) {
                 if (K9.DEBUG) {
-                    Log.v(K9.LOG_TAG, "Outbox does not exist");
+                    v("Outbox does not exist");
                 }
                 return;
             }
@@ -2832,7 +2835,7 @@ public class MessagingController {
             fp.add(FetchProfile.Item.BODY);
 
             if (K9.DEBUG) {
-                Log.i(K9.LOG_TAG, "Scanning folder '" + account.getOutboxFolderName()
+                i("Scanning folder '" + account.getOutboxFolderName()
                         + "' (" + localFolder.getId() + ") for messages to send");
             }
 
@@ -2850,12 +2853,12 @@ public class MessagingController {
                         count = oldCount;
                     }
                     if (K9.DEBUG) {
-                        Log.i(K9.LOG_TAG, "Send count for message " + message.getUid() + " is " + count.get());
+                        i("Send count for message " + message.getUid() + " is " + count.get());
                     }
 
                     if (count.incrementAndGet() > K9.MAX_SEND_ATTEMPTS) {
-                        Log.e(K9.LOG_TAG, "Send count for message " + message.getUid() + " can't be delivered after "
-                                + K9.MAX_SEND_ATTEMPTS + " attempts.  Giving up until the user restarts the device");
+                        e("Send count for message " + message.getUid() + " can't be delivered after "
+                                + MAX_SEND_ATTEMPTS + " attempts.  Giving up until the user restarts the device");
                         notificationController.showSendFailedNotification(account,
                                 new MessagingException(message.getSubject()));
                         continue;
@@ -2864,14 +2867,14 @@ public class MessagingController {
                     localFolder.fetch(Collections.singletonList(message), fp, null);
                     try {
                         if (message.getHeader(K9.IDENTITY_HEADER).length > 0) {
-                            Log.v(K9.LOG_TAG, "The user has set the Outbox and Drafts folder to the same thing. " +
+                            v("The user has set the Outbox and Drafts folder to the same thing. " +
                                     "This message appears to be a draft, so K-9 will not send it");
                             continue;
                         }
 
                         message.setFlag(Flag.X_SEND_IN_PROGRESS, true);
                         if (K9.DEBUG) {
-                            Log.i(K9.LOG_TAG, "Sending message with UID " + message.getUid());
+                            i("Sending message with UID " + message.getUid());
                         }
                         transport.sendMessage(message);
                         message.setFlag(Flag.X_SEND_IN_PROGRESS, false);
@@ -2907,7 +2910,7 @@ public class MessagingController {
                 } catch (Exception e) {
                     lastFailure = e;
                     wasPermanentFailure = false;
-                    Log.e(K9.LOG_TAG, "Failed to fetch message for sending", e);
+                    Timber.e("Failed to fetch message for sending", e);
                     addErrorMessage(account, "Failed to fetch message for sending", e);
                     notifySynchronizeMailboxFailed(account, localFolder, e);
                 }
@@ -2925,11 +2928,11 @@ public class MessagingController {
                 }
             }
         } catch (UnavailableStorageException e) {
-            Log.i(K9.LOG_TAG, "Failed to send pending messages because storage is not available - trying again later.");
+            i("Failed to send pending messages because storage is not available - trying again later.");
             throw new UnavailableAccountException(e);
         } catch (Exception e) {
             if (K9.DEBUG) {
-                Log.v(K9.LOG_TAG, "Failed to send pending messages", e);
+                Timber.v("Failed to send pending messages", e);
             }
             for (MessagingListener l : getListeners()) {
                 l.sendPendingMessagesFailed(account);
@@ -2948,20 +2951,20 @@ public class MessagingController {
             LocalFolder localFolder, LocalMessage message) throws MessagingException {
         if (!account.hasSentFolder()) {
             if (K9.DEBUG) {
-                Log.i(K9.LOG_TAG, "Account does not have a sent mail folder; deleting sent message");
+                i("Account does not have a sent mail folder; deleting sent message");
             }
             message.setFlag(Flag.DELETED, true);
         } else {
             LocalFolder localSentFolder = localStore.getFolder(account.getSentFolderName());
             if (K9.DEBUG) {
-                Log.i(K9.LOG_TAG, "Moving sent message to folder '" + account.getSentFolderName() + "' (" +
+                i("Moving sent message to folder '" + account.getSentFolderName() + "' (" +
                         localSentFolder.getId() + ") ");
             }
 
             localFolder.moveMessages(Collections.singletonList(message), localSentFolder);
 
             if (K9.DEBUG) {
-                Log.i(K9.LOG_TAG, "Moved sent message to folder '" + account.getSentFolderName() + "' (" +
+                i("Moved sent message to folder '" + account.getSentFolderName() + "' (" +
                         localSentFolder.getId() + ") ");
             }
 
@@ -2974,7 +2977,7 @@ public class MessagingController {
     private void handleSendFailure(Account account, Store localStore, Folder localFolder, Message message,
             Exception exception, boolean permanentFailure) throws MessagingException {
 
-        Log.e(K9.LOG_TAG, "Failed to send message", exception);
+        Timber.e("Failed to send message", exception);
 
         if (permanentFailure) {
             moveMessageToDraftsFolder(account, localFolder, localStore, message);
@@ -3010,7 +3013,7 @@ public class MessagingController {
                     AccountStats stats = account.getStats(context);
                     listener.accountStatusChanged(account, stats);
                 } catch (MessagingException me) {
-                    Log.e(K9.LOG_TAG, "Count not get unread count for account " +
+                    Timber.e("Count not get unread count for account " +
                             account.getDescription(), me);
                 }
 
@@ -3108,7 +3111,7 @@ public class MessagingController {
                     Folder localFolder = account.getLocalStore().getFolder(folderName);
                     unreadMessageCount = localFolder.getUnreadMessageCount();
                 } catch (MessagingException me) {
-                    Log.e(K9.LOG_TAG, "Count not get unread count for account " + account.getDescription(), me);
+                    Timber.e("Count not get unread count for account " + account.getDescription(), me);
                 }
                 l.folderStatusChanged(account, folderName, unreadMessageCount);
             }
@@ -3134,7 +3137,7 @@ public class MessagingController {
             return localStore.isMoveCapable() && remoteStore.isMoveCapable();
         } catch (MessagingException me) {
 
-            Log.e(K9.LOG_TAG, "Exception while ascertaining move capability", me);
+            Timber.e("Exception while ascertaining move capability", me);
             return false;
         }
     }
@@ -3145,7 +3148,7 @@ public class MessagingController {
             Store remoteStore = account.getRemoteStore();
             return localStore.isCopyCapable() && remoteStore.isCopyCapable();
         } catch (MessagingException me) {
-            Log.e(K9.LOG_TAG, "Exception while ascertaining copy capability", me);
+            Timber.e("Exception while ascertaining copy capability", me);
             return false;
         }
     }
@@ -3274,7 +3277,7 @@ public class MessagingController {
                 }
 
                 if (K9.DEBUG) {
-                    Log.i(K9.LOG_TAG, "moveOrCopyMessageSynchronous: source folder = " + srcFolder
+                    i("moveOrCopyMessageSynchronous: source folder = " + srcFolder
                             + ", " + messages.size() + " messages, " + ", destination folder = " + destFolder +
                             ", isCopy = " + isCopy);
                 }
@@ -3325,7 +3328,7 @@ public class MessagingController {
 
             processPendingCommands(account);
         } catch (UnavailableStorageException e) {
-            Log.i(K9.LOG_TAG, "Failed to move/copy message because storage is not available - trying again later.");
+            i("Failed to move/copy message because storage is not available - trying again later.");
             throw new UnavailableAccountException(e);
         } catch (MessagingException me) {
             addErrorMessage(account, null, me);
@@ -3386,7 +3389,7 @@ public class MessagingController {
             deleteMessagesSynchronous(account, folderName,
                     messagesToDelete, null);
         } catch (MessagingException e) {
-            Log.e(K9.LOG_TAG, "Something went wrong while deleting threads", e);
+            Timber.e("Something went wrong while deleting threads", e);
         }
     }
 
@@ -3480,7 +3483,7 @@ public class MessagingController {
             Map<String, String> uidMap = null;
             if (folder.equals(account.getTrashFolderName()) || !account.hasTrashFolder()) {
                 if (K9.DEBUG) {
-                    Log.d(K9.LOG_TAG, "Deleting messages in trash folder or trash set to -None-, not copying");
+                    Timber.d("Deleting messages in trash folder or trash set to -None-, not copying");
                 }
 
                 localFolder.setFlags(messages, Collections.singleton(Flag.DELETED), true);
@@ -3491,7 +3494,7 @@ public class MessagingController {
                 }
                 if (localTrashFolder.exists()) {
                     if (K9.DEBUG) {
-                        Log.d(K9.LOG_TAG, "Deleting messages in normal folder, moving");
+                        Timber.d("Deleting messages in normal folder, moving");
                     }
 
                     uidMap = localFolder.moveMessages(messages, localTrashFolder);
@@ -3508,8 +3511,7 @@ public class MessagingController {
             }
 
             if (K9.DEBUG) {
-                Log.d(K9.LOG_TAG,
-                        "Delete policy for account " + account.getDescription() + " is " + account.getDeletePolicy());
+                Timber.d("Delete policy for account " + account.getDescription() + " is " + account.getDeletePolicy());
             }
 
             if (folder.equals(account.getOutboxFolderName())) {
@@ -3532,13 +3534,13 @@ public class MessagingController {
                 processPendingCommands(account);
             } else {
                 if (K9.DEBUG) {
-                    Log.d(K9.LOG_TAG, "Delete policy " + account.getDeletePolicy() + " prevents delete from server");
+                    Timber.d("Delete policy " + account.getDeletePolicy() + " prevents delete from server");
                 }
             }
 
             unsuppressMessages(account, messages);
         } catch (UnavailableStorageException e) {
-            Log.i(K9.LOG_TAG, "Failed to delete message because storage is not available - trying again later.");
+            i("Failed to delete message because storage is not available - trying again later.");
             throw new UnavailableAccountException(e);
         } catch (MessagingException me) {
             addErrorMessage(account, null, me);
@@ -3609,10 +3611,10 @@ public class MessagingController {
                         processPendingCommands(account);
                     }
                 } catch (UnavailableStorageException e) {
-                    Log.i(K9.LOG_TAG, "Failed to empty trash because storage is not available - trying again later.");
+                    i("Failed to empty trash because storage is not available - trying again later.");
                     throw new UnavailableAccountException(e);
                 } catch (Exception e) {
-                    Log.e(K9.LOG_TAG, "emptyTrash failed", e);
+                    Timber.e("emptyTrash failed", e);
                     addErrorMessage(account, null, e);
                 } finally {
                     closeFolder(localFolder);
@@ -3638,10 +3640,10 @@ public class MessagingController {
             localFolder.open(Folder.OPEN_MODE_RW);
             localFolder.clearAllMessages();
         } catch (UnavailableStorageException e) {
-            Log.i(K9.LOG_TAG, "Failed to clear folder because storage is not available - trying again later.");
+            i("Failed to clear folder because storage is not available - trying again later.");
             throw new UnavailableAccountException(e);
         } catch (Exception e) {
-            Log.e(K9.LOG_TAG, "clearFolder failed", e);
+            Timber.e("clearFolder failed", e);
             addErrorMessage(account, null, e);
         } finally {
             closeFolder(localFolder);
@@ -3672,7 +3674,7 @@ public class MessagingController {
 
     public void sendAlternate(Context context, Account account, LocalMessage message) {
         if (K9.DEBUG) {
-            Log.d(K9.LOG_TAG, "Got message " + account.getDescription() + ":" + message.getFolder()
+            Timber.d("Got message " + account.getDescription() + ":" + message.getFolder()
                     + ":" + message.getUid() + " for sendAlternate");
         }
 
@@ -3743,7 +3745,7 @@ public class MessagingController {
 
                 try {
                     if (K9.DEBUG) {
-                        Log.i(K9.LOG_TAG, "Starting mail check");
+                        i("Starting mail check");
                     }
                     Preferences prefs = Preferences.getPreferences(context);
 
@@ -3760,7 +3762,7 @@ public class MessagingController {
                     }
 
                 } catch (Exception e) {
-                    Log.e(K9.LOG_TAG, "Unable to synchronize mail", e);
+                    Timber.e("Unable to synchronize mail", e);
                     addErrorMessage(account, null, e);
                 }
                 putBackground("finalize sync", null, new Runnable() {
@@ -3768,7 +3770,7 @@ public class MessagingController {
                             public void run() {
 
                                 if (K9.DEBUG) {
-                                    Log.i(K9.LOG_TAG, "Finished mail sync");
+                                    i("Finished mail sync");
                                 }
 
                                 if (wakeLock != null) {
@@ -3791,20 +3793,20 @@ public class MessagingController {
             final MessagingListener listener) {
         if (!account.isAvailable(context)) {
             if (K9.DEBUG) {
-                Log.i(K9.LOG_TAG, "Skipping synchronizing unavailable account " + account.getDescription());
+                i("Skipping synchronizing unavailable account " + account.getDescription());
             }
             return;
         }
         final long accountInterval = account.getAutomaticCheckIntervalMinutes() * 60 * 1000;
         if (!ignoreLastCheckedTime && accountInterval <= 0) {
             if (K9.DEBUG) {
-                Log.i(K9.LOG_TAG, "Skipping synchronizing account " + account.getDescription());
+                i("Skipping synchronizing account " + account.getDescription());
             }
             return;
         }
 
         if (K9.DEBUG) {
-            Log.i(K9.LOG_TAG, "Synchronizing account " + account.getDescription());
+            i("Synchronizing account " + account.getDescription());
         }
 
         account.setRingNotified(false);
@@ -3848,14 +3850,14 @@ public class MessagingController {
                 synchronizeFolder(account, folder, ignoreLastCheckedTime, accountInterval, listener);
             }
         } catch (MessagingException e) {
-            Log.e(K9.LOG_TAG, "Unable to synchronize account " + account.getName(), e);
+            Timber.e("Unable to synchronize account " + account.getName(), e);
             addErrorMessage(account, null, e);
         } finally {
             putBackground("clear notification flag for " + account.getDescription(), null, new Runnable() {
                         @Override
                         public void run() {
                             if (K9.DEBUG) {
-                                Log.v(K9.LOG_TAG, "Clearing notification flag for " + account.getDescription());
+                                v("Clearing notification flag for " + account.getDescription());
                             }
                             account.setRingNotified(false);
                             try {
@@ -3864,7 +3866,7 @@ public class MessagingController {
                                     notificationController.clearNewMailNotifications(account);
                                 }
                             } catch (MessagingException e) {
-                                Log.e(K9.LOG_TAG, "Unable to getUnreadMessageCount for account: " + account, e);
+                                Timber.e("Unable to getUnreadMessageCount for account: " + account, e);
                             }
                         }
                     }
@@ -3884,14 +3886,14 @@ public class MessagingController {
 
 
         if (K9.DEBUG) {
-            Log.v(K9.LOG_TAG, "Folder " + folder.getName() + " was last synced @ " +
+            v("Folder " + folder.getName() + " was last synced @ " +
                     new Date(folder.getLastChecked()));
         }
 
         if (!ignoreLastCheckedTime && folder.getLastChecked() >
                 (System.currentTimeMillis() - accountInterval)) {
             if (K9.DEBUG) {
-                Log.v(K9.LOG_TAG, "Not syncing folder " + folder.getName()
+                v("Not syncing folder " + folder.getName()
                         + ", previously synced @ " + new Date(folder.getLastChecked())
                         + " which would be too recent for the account period");
             }
@@ -3912,7 +3914,7 @@ public class MessagingController {
                             if (!ignoreLastCheckedTime && tLocalFolder.getLastChecked() >
                                     (System.currentTimeMillis() - accountInterval)) {
                                 if (K9.DEBUG) {
-                                    Log.v(K9.LOG_TAG, "Not running Command for folder " + folder.getName()
+                                    v("Not running Command for folder " + folder.getName()
                                             + ", previously synced @ " + new Date(folder.getLastChecked())
                                             + " which would be too recent for the account period");
                                 }
@@ -3926,7 +3928,7 @@ public class MessagingController {
                             }
                         } catch (Exception e) {
 
-                            Log.e(K9.LOG_TAG, "Exception while processing folder " +
+                            Timber.e("Exception while processing folder " +
                                     account.getDescription() + ":" + folder.getName(), e);
                             addErrorMessage(account, null, e);
                         } finally {
@@ -3965,11 +3967,10 @@ public class MessagingController {
                         l.accountSizeChanged(account, oldSize, newSize);
                     }
                 } catch (UnavailableStorageException e) {
-                    Log.i(K9.LOG_TAG,
-                            "Failed to compact account because storage is not available - trying again later.");
+                    i("Failed to compact account because storage is not available - trying again later.");
                     throw new UnavailableAccountException(e);
                 } catch (Exception e) {
-                    Log.e(K9.LOG_TAG, "Failed to compact account " + account.getDescription(), e);
+                    Timber.e("Failed to compact account " + account.getDescription(), e);
                 }
             }
         });
@@ -3994,10 +3995,10 @@ public class MessagingController {
                         l.accountStatusChanged(account, stats);
                     }
                 } catch (UnavailableStorageException e) {
-                    Log.i(K9.LOG_TAG, "Failed to clear account because storage is not available - trying again later.");
+                    i("Failed to clear account because storage is not available - trying again later.");
                     throw new UnavailableAccountException(e);
                 } catch (Exception e) {
-                    Log.e(K9.LOG_TAG, "Failed to clear account " + account.getDescription(), e);
+                    Timber.e("Failed to clear account " + account.getDescription(), e);
                 }
             }
         });
@@ -4022,11 +4023,10 @@ public class MessagingController {
                         l.accountStatusChanged(account, stats);
                     }
                 } catch (UnavailableStorageException e) {
-                    Log.i(K9.LOG_TAG,
-                            "Failed to recreate an account because storage is not available - trying again later.");
+                    i("Failed to recreate an account because storage is not available - trying again later.");
                     throw new UnavailableAccountException(e);
                 } catch (Exception e) {
-                    Log.e(K9.LOG_TAG, "Failed to recreate account " + account.getDescription(), e);
+                    Timber.e("Failed to recreate account " + account.getDescription(), e);
                 }
             }
         });
@@ -4087,7 +4087,7 @@ public class MessagingController {
                 Integer messageUid = Integer.parseInt(message.getUid());
                 if (messageUid <= localFolder.getLastUid()) {
                     if (K9.DEBUG) {
-                        Log.d(K9.LOG_TAG, "Message uid is " + messageUid + ", max message uid is " +
+                        Timber.d("Message uid is " + messageUid + ", max message uid is " +
                                 localFolder.getLastUid() + ".  Skipping notification.");
                     }
                     return false;
@@ -4150,7 +4150,7 @@ public class MessagingController {
             }
 
         } catch (MessagingException e) {
-            Log.e(K9.LOG_TAG, "Unable to save message as draft.", e);
+            Timber.e("Unable to save message as draft.", e);
             addErrorMessage(account, null, e);
         }
         return localMessage;
@@ -4161,7 +4161,7 @@ public class MessagingController {
         if (message instanceof LocalMessage) {
             id = message.getId();
         } else {
-            Log.w(K9.LOG_TAG, "MessagingController.getId() called without a LocalMessage");
+            w("MessagingController.getId() called without a LocalMessage");
             id = INVALID_MESSAGE_ID;
         }
 
@@ -4277,7 +4277,7 @@ public class MessagingController {
                     continue;
                 }
                 if (K9.DEBUG) {
-                    Log.i(K9.LOG_TAG, "Starting pusher for " + account.getDescription() + ":" + folder.getName());
+                    i("Starting pusher for " + account.getDescription() + ":" + folder.getName());
                 }
 
                 names.add(folder.getName());
@@ -4289,7 +4289,7 @@ public class MessagingController {
 
                 if (names.size() > maxPushFolders) {
                     if (K9.DEBUG) {
-                        Log.i(K9.LOG_TAG, "Count of folders to push for account " + account.getDescription() + " is " +
+                        i("Count of folders to push for account " + account.getDescription() + " is " +
                                 names.size()
                                 + ", greater than limit of " + maxPushFolders + ", truncating");
                     }
@@ -4301,7 +4301,7 @@ public class MessagingController {
                     Store store = account.getRemoteStore();
                     if (!store.isPushCapable()) {
                         if (K9.DEBUG) {
-                            Log.i(K9.LOG_TAG, "Account " + account.getDescription() + " is not push capable, skipping");
+                            i("Account " + account.getDescription() + " is not push capable, skipping");
                         }
 
                         return false;
@@ -4314,27 +4314,27 @@ public class MessagingController {
                         }
                     }
                 } catch (Exception e) {
-                    Log.e(K9.LOG_TAG, "Could not get remote store", e);
+                    Timber.e("Could not get remote store", e);
                     return false;
                 }
 
                 return true;
             } else {
                 if (K9.DEBUG) {
-                    Log.i(K9.LOG_TAG, "No folders are configured for pushing in account " + account.getDescription());
+                    i("No folders are configured for pushing in account " + account.getDescription());
                 }
                 return false;
             }
 
         } catch (Exception e) {
-            Log.e(K9.LOG_TAG, "Got exception while setting up pushing", e);
+            Timber.e("Got exception while setting up pushing", e);
         }
         return false;
     }
 
     public void stopAllPushing() {
         if (K9.DEBUG) {
-            Log.i(K9.LOG_TAG, "Stopping all pushers");
+            i("Stopping all pushers");
         }
 
         Iterator<Pusher> iter = pushers.values().iterator();
@@ -4348,7 +4348,7 @@ public class MessagingController {
     public void messagesArrived(final Account account, final Folder remoteFolder, final List<Message> messages,
             final boolean flagSyncOnly) {
         if (K9.DEBUG) {
-            Log.i(K9.LOG_TAG, "Got new pushed email messages for account " + account.getDescription()
+            i("Got new pushed email messages for account " + account.getDescription()
                     + ", folder " + remoteFolder.getName());
         }
 
@@ -4372,8 +4372,7 @@ public class MessagingController {
                     localFolder.setStatus(null);
 
                     if (K9.DEBUG) {
-                        Log.i(K9.LOG_TAG,
-                                "messagesArrived newCount = " + newCount + ", unread count = " + unreadMessageCount);
+                        i("messagesArrived newCount = " + newCount + ", unread count = " + unreadMessageCount);
                     }
 
                     if (unreadMessageCount == 0) {
@@ -4390,7 +4389,7 @@ public class MessagingController {
                     try {
                         localFolder.setStatus(errorMessage);
                     } catch (Exception se) {
-                        Log.e(K9.LOG_TAG, "Unable to set failed status on localFolder", se);
+                        Timber.e("Unable to set failed status on localFolder", se);
                     }
                     for (MessagingListener l : getListeners()) {
                         l.synchronizeMailboxFailed(account, remoteFolder.getName(), errorMessage);
@@ -4406,10 +4405,10 @@ public class MessagingController {
         try {
             latch.await();
         } catch (Exception e) {
-            Log.e(K9.LOG_TAG, "Interrupted while awaiting latch release", e);
+            Timber.e("Interrupted while awaiting latch release", e);
         }
         if (K9.DEBUG) {
-            Log.i(K9.LOG_TAG, "MessagingController.messagesArrivedLatch released");
+            i("MessagingController.messagesArrivedLatch released");
         }
     }
 
@@ -4496,7 +4495,7 @@ public class MessagingController {
             List<LocalMessage> localMessages = messageFolder.getMessagesByReference(messageReferences);
             actor.act(account, messageFolder, localMessages);
         } catch (MessagingException e) {
-            Log.e(K9.LOG_TAG, "Error loading account?!", e);
+            Timber.e("Error loading account?!", e);
         }
 
     }
