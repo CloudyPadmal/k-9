@@ -1156,7 +1156,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
              * Let the user continue composing their message even if we have a problem processing
              * the source message. Log it as an error, though.
              */
-            Timber.e("Error while processing source message: ", me);
+            Timber.e(me, "Error while processing source message: ");
         } finally {
             relatedMessageProcessed = true;
             changesMadeSinceLastSave = false;
@@ -1351,7 +1351,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
                 contacts.markAsContacted(message.getRecipients(RecipientType.BCC));
                 updateReferencedMessage();
             } catch (Exception e) {
-                Timber.e("Failed to mark contact as contacted.", e);
+                Timber.e(e, "Failed to mark contact as contacted.");
             }
 
             MessagingController.getInstance(context).sendMessage(account, message, null);
@@ -1480,7 +1480,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
 
     @Override
     public void onMessageBuildException(MessagingException me) {
-        Timber.e("Error sending message", me);
+        Timber.e(me, "Error sending message");
         Toast.makeText(MessageCompose.this,
                 getString(R.string.send_failed_reason, me.getLocalizedMessage()), Toast.LENGTH_LONG).show();
         currentMessageBuilder = null;
@@ -1493,7 +1493,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         try {
             startIntentSenderForResult(pendingIntent.getIntentSender(), requestCode, null, 0, 0, 0);
         } catch (SendIntentException e) {
-            Timber.e("Error starting pending intent from builder!", e);
+            Timber.e(e, "Error starting pending intent from builder!");
         }
     }
 
@@ -1517,7 +1517,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
             } catch (MessagingException e) {
                 // Hm, if we couldn't populate the UI after source reprocessing, let's just delete it?
                 quotedMessagePresenter.showOrHideQuotedText(QuotedTextMode.HIDE);
-                Timber.e("Could not re-process source message; deleting quoted text to be safe.", e);
+                Timber.e(e, "Could not re-process source message; deleting quoted text to be safe.");
             }
             updateMessageFormat();
         } else {
@@ -1562,7 +1562,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
                 requestCode |= REQUEST_MASK_LOADER_HELPER;
                 startIntentSenderForResult(si, requestCode, fillIntent, flagsMask, flagValues, extraFlags);
             } catch (SendIntentException e) {
-                Timber.e("Irrecoverable error calling PendingIntent!", e);
+                Timber.e(e, "Irrecoverable error calling PendingIntent!");
             }
         }
 
